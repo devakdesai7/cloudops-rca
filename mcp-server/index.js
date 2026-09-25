@@ -13,6 +13,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { queryLogs } from "./lib/queryLogs.js";
 
 const server = new McpServer({
   name: "cloudops-rca-tools",
@@ -46,19 +47,9 @@ server.registerTool(
     }),
   },
   async ({ service, start_time, end_time, trace_id }) => {
-    // TODO: implement real log querying against the sample-infra services
-    const placeholder = [
-      {
-        timestamp: new Date().toISOString(),
-        service,
-        level: "info",
-        trace_id: trace_id ?? null,
-        message: "placeholder — real implementation pending",
-        meta: { start_time: start_time ?? null, end_time: end_time ?? null },
-      },
-    ];
+    const rows = queryLogs({ service, start_time, end_time, trace_id });
     return {
-      content: [{ type: "text", text: JSON.stringify(placeholder, null, 2) }],
+      content: [{ type: "text", text: JSON.stringify(rows, null, 2) }],
     };
   }
 );
