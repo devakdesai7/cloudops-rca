@@ -1,0 +1,5 @@
+# Never commit the real connection string or secrets
+.env
+node_modules/
+*.log
+
