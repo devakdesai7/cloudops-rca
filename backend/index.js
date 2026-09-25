@@ -3,6 +3,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const pool = require('./db/pool');
+const authRouter = require('./routes/auth');
 
 const PORT = process.env.PORT || 4000;
 const app = express();
@@ -10,6 +11,9 @@ const app = express();
 // ── Middleware ────────────────────────────────────────────────────────────────
 app.use(cors());
 app.use(express.json());
+
+// ── Routes ───────────────────────────────────────────────────────────────────
+app.use('/api/auth', authRouter);
 
 // ── Health check ─────────────────────────────────────────────────────────────
 // GET /api/health  — also runs SELECT 1 to verify Neon connectivity.
