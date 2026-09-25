@@ -1,0 +1,13 @@
+{
+  "name": "cloudops-rca-mcp-server",
+  "version": "0.1.0",
+  "description": "MCP server exposing CloudOps RCA tools to Bob",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  }
+}
