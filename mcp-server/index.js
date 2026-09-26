@@ -15,6 +15,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { queryLogs } from "./lib/queryLogs.js";
 import { getRecentCommits, checkDeployHistory } from "./lib/gitLog.js";
+import { getRunbook } from "./lib/getRunbook.js";
 
 const server = new McpServer({
   name: "cloudops-rca-tools",
@@ -96,10 +97,9 @@ server.registerTool(
     }),
   },
   async ({ service }) => {
-    // TODO: load runbook from disk or a knowledge base
-    const placeholder = `# Runbook: ${service}\n\n> TODO: real runbook content pending.\n`;
+    const content = getRunbook({ service });
     return {
-      content: [{ type: "text", text: placeholder }],
+      content: [{ type: "text", text: content }],
     };
   }
 );
