@@ -8,7 +8,9 @@
     "dev": "node --watch index.js",
     "migrate": "node db/migrate.js",
     "migrate:service-unique": "node db/migrate_add_service_unique.js",
-    "seed": "node db/seed.js"
+    "seed": "node db/seed.js",
+    "test:bob-spawn": "node test-bob-spawn.js",
+    "test:ws": "node test/ws-test-client.js --self-contained"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",
