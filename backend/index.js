@@ -4,6 +4,8 @@ const express = require('express');
 const cors = require('cors');
 const pool = require('./db/pool');
 const authRouter = require('./routes/auth');
+const incidentsRouter = require('./routes/incidents');
+const { requireAuth } = require('./middleware/auth');
 
 const PORT = process.env.PORT || 4000;
 const app = express();
@@ -14,6 +16,7 @@ app.use(express.json());
 
 // ── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRouter);
+app.use('/api/incidents', requireAuth, incidentsRouter);
 
 // ── Health check ─────────────────────────────────────────────────────────────
 // GET /api/health  — also runs SELECT 1 to verify Neon connectivity.
