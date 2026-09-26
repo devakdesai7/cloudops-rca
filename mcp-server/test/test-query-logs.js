@@ -10,19 +10,12 @@
  * No test framework required — prints results and exits non-zero on failure.
  */
 
-import { resolve, dirname } from "path";
-import { fileURLToPath } from "url";
 import { existsSync } from "fs";
-import { queryLogs } from "../lib/queryLogs.js";
+import { queryLogs, DEFAULT_DB_PATH } from "../lib/queryLogs.js";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
-// From mcp-server/test/ up 4 levels to cloudops-sample-infra/logs/
-// Structure: cloudops-rca-new/cloudops-rca/mcp-server/test/ → ../../../../cloudops-sample-infra/
-const DB_PATH = resolve(
-  __dirname,
-  "../../../../cloudops-sample-infra/logs/shared-logs.db"
-);
+// Use the exact same path that the real queryLogs tool uses — resolved once
+// in queryLogs.js, respecting the LOG_DB_PATH env var if set.
+const DB_PATH = DEFAULT_DB_PATH;
 
 let passed = 0;
 let failed = 0;

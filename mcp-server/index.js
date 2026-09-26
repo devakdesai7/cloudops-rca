@@ -14,6 +14,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { queryLogs } from "./lib/queryLogs.js";
+import { getRecentCommits, checkDeployHistory } from "./lib/gitLog.js";
 
 const server = new McpServer({
   name: "cloudops-rca-tools",
@@ -73,18 +74,9 @@ server.registerTool(
     }),
   },
   async ({ service, since }) => {
-    // TODO: implement real git log query for the service's repository
-    const placeholder = [
-      {
-        sha: "0000000000000000000000000000000000000000",
-        message: "placeholder — real implementation pending",
-        author: "unknown",
-        date: new Date().toISOString(),
-        filesChanged: [],
-      },
-    ];
+    const commits = getRecentCommits({ service, since });
     return {
-      content: [{ type: "text", text: JSON.stringify(placeholder, null, 2) }],
+      content: [{ type: "text", text: JSON.stringify(commits, null, 2) }],
     };
   }
 );
@@ -126,16 +118,9 @@ server.registerTool(
     }),
   },
   async ({ service }) => {
-    // TODO: query deployment records for the service
-    const placeholder = [
-      {
-        timestamp: new Date().toISOString(),
-        commitSha: "0000000000000000000000000000000000000000",
-        description: `placeholder — real deploy history for ${service} pending`,
-      },
-    ];
+    const history = checkDeployHistory({ service });
     return {
-      content: [{ type: "text", text: JSON.stringify(placeholder, null, 2) }],
+      content: [{ type: "text", text: JSON.stringify(history, null, 2) }],
     };
   }
 );

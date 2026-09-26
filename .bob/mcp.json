@@ -4,5 +4,9 @@
       "command": "node",
       "args": ["${workspaceFolder}/mcp-server/index.js"]
     }
+  },
+  "env": {
+    "INFRA_REPO_PATH" : "D:\\Projects\\ibm_bob_hackathon\\cloudops-sample-infra-moved",
+    "LOG_DB_PATH" : "D:\\Projects\\ibm_bob_hackathon\\cloudops-sample-infra-moved\\logs\\shared-logs.db"
   }
 }
