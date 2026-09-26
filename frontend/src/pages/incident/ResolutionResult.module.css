@@ -1,0 +1,141 @@
+/* ── Panel container ─────────────────────────────────────────────────────── */
+
+.result {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-left: 3px solid var(--status-done);
+  border-radius: var(--radius-lg);
+  padding: 1.6rem 1.5rem;
+  margin-top: 1.25rem;
+  animation: resultIn 0.4s ease;
+}
+
+.result.rejected {
+  border-left-color: var(--status-rejected);
+}
+
+@keyframes resultIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Heading ─────────────────────────────────────────────────────────────── */
+
+.heading {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  margin: 0 0 1.1rem;
+}
+
+.result:not(.rejected) .heading { color: var(--status-done); }
+.result.rejected .heading        { color: var(--status-rejected); }
+
+/* ── Fix applied confirmation ────────────────────────────────────────────── */
+
+.confirmRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin-bottom: 1.25rem;
+}
+
+.confirmIcon {
+  font-size: 1.2rem;
+  line-height: 1.2;
+  flex-shrink: 0;
+}
+
+.confirmText {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+/* ── Duration display — the hero number ─────────────────────────────────── */
+
+.durationBox {
+  background: rgba(52, 211, 153, 0.06);
+  border: 1px solid rgba(52, 211, 153, 0.2);
+  border-radius: var(--radius-md);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.25rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+
+.durationLabel {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #34d399;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+/* The hero number */
+.durationValue {
+  font-size: 2.4rem;
+  font-weight: 800;
+  color: #34d399;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  font-family: var(--font-mono);
+}
+
+.durationMs {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+/* ── Rejection display ───────────────────────────────────────────────────── */
+
+.rejectedMsg {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0 0 0.5rem;
+}
+
+/* ── Rollback button ─────────────────────────────────────────────────────── */
+
+.rollbackRow {
+  margin-top: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.btnRollback {
+  background: transparent;
+  color: #f0b429;
+  border: 1px solid rgba(240, 180, 41, 0.35);
+  border-radius: var(--radius-sm);
+  padding: 0.45rem 1.1rem;
+  font-size: 0.83rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.btnRollback:hover:not(:disabled) {
+  background: rgba(240, 180, 41, 0.08);
+  border-color: rgba(240, 180, 41, 0.55);
+}
+
+.btnRollback:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.rollbackNote {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.rollbackError   { font-size: 0.82rem; color: #f85149; margin: 0; }
+.rollbackSuccess { font-size: 0.82rem; color: var(--status-done); font-weight: 500; margin: 0; }

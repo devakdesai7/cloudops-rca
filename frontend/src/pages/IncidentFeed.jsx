@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { listIncidents, triggerIncident } from '../api/client'
+import { injectChaos, listIncidents, resetChaos, triggerIncident } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import styles from './Home.module.css'
 
@@ -47,12 +47,44 @@ export default function IncidentFeed() {
     }
   }, [])
 
-  // Initial fetch + interval
   useEffect(() => {
     fetchList()
     const id = setInterval(fetchList, POLL_INTERVAL_MS)
     return () => clearInterval(id)
   }, [fetchList])
+
+  // ── Chaos controls ────────────────────────────────────────────────────────
+  // 'idle' | 'injecting' | 'resetting' | 'injected' | 'reset' | 'error'
+  const [chaosPhase, setChaosPhase] = useState('idle')
+  const [chaosMsg, setChaosMsg]     = useState(null)
+
+  const handleInject = useCallback(async () => {
+    setChaosPhase('injecting')
+    setChaosMsg(null)
+    try {
+      await injectChaos('payment-service', 300)
+      setChaosPhase('injected')
+      setChaosMsg('Chaos injected — payment-service timeout set to 300 ms')
+    } catch (err) {
+      setChaosPhase('error')
+      setChaosMsg(err.message)
+    }
+  }, [])
+
+  const handleReset = useCallback(async () => {
+    setChaosPhase('resetting')
+    setChaosMsg(null)
+    try {
+      await resetChaos()
+      setChaosPhase('reset')
+      setChaosMsg('Infrastructure reset — payment-service restored to healthy')
+    } catch (err) {
+      setChaosPhase('error')
+      setChaosMsg(err.message)
+    }
+  }, [])
+
+  const chaosInFlight = chaosPhase === 'injecting' || chaosPhase === 'resetting'
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -69,77 +101,111 @@ export default function IncidentFeed() {
       </header>
 
       <main className={styles.main}>
-        <h2 className={styles.heading}>Start Triage</h2>
 
-        <form onSubmit={handleTrigger} style={{ marginBottom: '2rem' }}>
-          <div style={{ marginBottom: '0.75rem' }}>
-            <label htmlFor="summary" style={{ display: 'block', marginBottom: '0.25rem' }}>
-              Summary
-            </label>
-            <input
-              id="summary"
-              type="text"
-              value={summary}
-              onChange={(e) => setSummary(e.target.value)}
-              required
-              style={{ width: '100%', padding: '0.45rem 0.6rem', boxSizing: 'border-box' }}
-            />
+        {/* ── Dev Tools (approver only) ──────────────────────────────────── */}
+        {role === 'approver' && (
+          <div className={styles.devTools}>
+            <div className={styles.devToolsHeader}>
+              <span className={styles.devToolsBadge}>Dev Tools</span>
+              <span className={styles.devToolsTitle}>Chaos Controls</span>
+            </div>
+            <div className={styles.devToolsBody}>
+              <button
+                className={styles.btnChaos}
+                disabled={chaosInFlight}
+                onClick={handleInject}
+              >
+                {chaosPhase === 'injecting' ? 'Injecting…' : '⚡ Simulate payment-service slowdown'}
+              </button>
+              <button
+                className={styles.btnReset}
+                disabled={chaosInFlight}
+                onClick={handleReset}
+              >
+                {chaosPhase === 'resetting' ? 'Resetting…' : '↺ Reset to healthy'}
+              </button>
+              {chaosMsg && (
+                <span className={
+                  chaosPhase === 'error' ? styles.chaosError : styles.chaosSuccess
+                }>
+                  {chaosMsg}
+                </span>
+              )}
+              {chaosInFlight && (
+                <span className={styles.chaosStatus}>
+                  Waiting for container to restart…
+                </span>
+              )}
+            </div>
           </div>
+        )}
 
-          <div style={{ marginBottom: '0.75rem' }}>
-            <label htmlFor="affectedEndpoint" style={{ display: 'block', marginBottom: '0.25rem' }}>
-              Affected Endpoint
-            </label>
-            <input
-              id="affectedEndpoint"
-              type="text"
-              value={affectedEndpoint}
-              onChange={(e) => setAffectedEndpoint(e.target.value)}
-              required
-              style={{ width: '100%', padding: '0.45rem 0.6rem', boxSizing: 'border-box' }}
-            />
-          </div>
+        {/* ── Trigger form ──────────────────────────────────────────────── */}
+        <p className={styles.sectionLabel}>New Incident</p>
+        <div className={styles.triggerForm}>
+          <form onSubmit={handleTrigger}>
+            <div className={styles.formRow}>
+              <div className={styles.formField}>
+                <label htmlFor="summary" className={styles.formLabel}>Summary</label>
+                <input
+                  id="summary"
+                  type="text"
+                  className={styles.formInput}
+                  value={summary}
+                  onChange={(e) => setSummary(e.target.value)}
+                  placeholder="e.g. checkout latency spike"
+                  required
+                />
+              </div>
+              <div className={styles.formField}>
+                <label htmlFor="affectedEndpoint" className={styles.formLabel}>Affected Endpoint</label>
+                <input
+                  id="affectedEndpoint"
+                  type="text"
+                  className={styles.formInput}
+                  value={affectedEndpoint}
+                  onChange={(e) => setAffectedEndpoint(e.target.value)}
+                  placeholder="e.g. /checkout"
+                  required
+                />
+              </div>
+            </div>
+            <div className={styles.formActions}>
+              <button type="submit" className={styles.btnPrimary} disabled={triggering}>
+                {triggering ? 'Starting triage…' : 'Start Triage →'}
+              </button>
+              {triggerError && <p className={styles.formError}>{triggerError}</p>}
+            </div>
+          </form>
+        </div>
 
-          {triggerError && (
-            <p style={{ color: 'red', margin: '0 0 0.5rem' }}>{triggerError}</p>
-          )}
+        {/* ── Past incidents ──────────────────────────────────────────────── */}
+        <p className={styles.sectionLabel}>Past Incidents</p>
 
-          <button type="submit" disabled={triggering}>
-            {triggering ? 'Starting…' : 'Start Triage'}
-          </button>
-        </form>
-
-        <h2 className={styles.heading}>Past Incidents</h2>
-
-        {listError && <p style={{ color: 'red' }}>{listError}</p>}
+        {listError && <p className={styles.formError}>{listError}</p>}
 
         {incidents.length === 0 && !listError && (
           <p className={styles.placeholder}>No incidents yet.</p>
         )}
 
-        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+        <ul className={styles.incidentList}>
           {incidents.map((inc) => (
             <li
               key={inc.incidentId}
+              className={styles.incidentItem}
               onClick={() => navigate(`/incidents/${inc.incidentId}`)}
-              style={{
-                padding: '0.75rem 1rem',
-                marginBottom: '0.5rem',
-                background: '#ffffff',
-                border: '1px solid #e5e7eb',
-                borderRadius: '6px',
-                cursor: 'pointer',
-              }}
             >
-              <div style={{ fontWeight: 600 }}>{inc.summary}</div>
-              <div style={{ fontSize: '0.85rem', color: '#57606a', marginTop: '0.2rem' }}>
-                <span>{inc.status}</span>
-                {' · '}
-                <span>{new Date(inc.createdAt).toLocaleString()}</span>
-              </div>
+              <span className={styles.incidentSummary}>{inc.summary}</span>
+              <span className={styles.incidentMeta}>
+                <span className={styles.statusPill} data-status={inc.status}>
+                  {inc.status.replace(/_/g, ' ')}
+                </span>
+                {new Date(inc.createdAt).toLocaleString()}
+              </span>
             </li>
           ))}
         </ul>
+
       </main>
     </div>
   )
