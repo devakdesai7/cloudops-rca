@@ -154,7 +154,16 @@ apply_fix(service: string, commitSha: string, action: "revert"|"config_change", 
 ### Bob ↔ Backend process contract (critical — this is the seam between your work and Shivang's)
 Shivang's backend spawns Bob as a child process per incident:
 ```
-bob -p "<prompt referencing the incident>"
+### Invocation command (headless)
+Shivang's backend must spawn Bob using this exact command shape:
+
+bob run --format stream-json --trust --accept-license --max-turns 40 --max-cost 3.00 "<prompt text>"
+
+Where <prompt text> is the full content of mcp-server/prompts/triage_debug.md
+with {{INCIDENT_SUMMARY}} and {{INCIDENT_ENDPOINT}} replaced with the real
+incident's summary and affectedEndpoint values, before being passed in.
+BOB_API_KEY must be set as an environment variable wherever this command
+runs.
 ```
 Your `triage-debug` workflow (Task 6) **must** instruct Bob to print progress as single-line, prefixed JSON to stdout, in addition to its normal reasoning output, so the backend can parse it regardless of Bob's natural language formatting:
 ```
@@ -174,3 +183,18 @@ cloudops-rca/
 ├── frontend/                    ← Divy
 └── .bob/                          ← shared config; you own the workflow file inside it
 ```
+
+### Filesystem layout (sibling repos)
+mcp-server/ tools default to reading the sample infra as a sibling directory:
+`../cloudops-sample-infra/` (relative to cloudops-rca/mcp-server/lib/).
+
+If your local clone layout differs, override via environment variables in
+`.bob/mcp.json`:
+- `INFRA_REPO_PATH` — path to the cloudops-sample-infra repo root
+- `LOG_DB_PATH` — path to shared-logs.db inside it
+
+Both are optional — if unset, tools fall back to the default sibling-folder
+path above. This env-var-with-fallback pattern must be used for every
+MCP tool that reads from the sample infra (query_logs, get_recent_commits,
+check_deploy_history, and later get_runbook, apply_fix) — build it in from
+the start for new tools, don't retrofit later.

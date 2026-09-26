@@ -19,12 +19,19 @@ import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Path from mcp-server/lib/ up 4 levels to cloudops-sample-infra/logs/shared-logs.db
-// Structure: cloudops-rca-new/cloudops-rca/mcp-server/lib/ → ../../../../cloudops-sample-infra/
-const DEFAULT_DB_PATH = resolve(
-  __dirname,
-  "../../../../cloudops-sample-infra/logs/shared-logs.db"
-);
+// DB path: read from LOG_DB_PATH env var so teammates with a different repo
+// layout can override without touching code. Falls back to the relative path
+// that works for the standard layout:
+//   cloudops-rca-new/cloudops-rca/mcp-server/lib/ → ../../../../cloudops-sample-infra/
+const DEFAULT_DB_PATH =
+  process.env.LOG_DB_PATH ??
+  resolve(__dirname, "../../../../cloudops-sample-infra/logs/shared-logs.db");
+
+/**
+ * The resolved DB path this module will use by default — exported so test
+ * scripts can import it instead of duplicating the resolution logic.
+ */
+export { DEFAULT_DB_PATH };
 
 /**
  * @param {object} params

@@ -24,7 +24,8 @@ CREATE TABLE incident_services (
   service TEXT NOT NULL,
   status TEXT NOT NULL,
   verdict TEXT,
-  evidence_json JSONB
+  evidence_json JSONB,
+  UNIQUE (incident_id, service)
 );
 
 CREATE TABLE approvals (

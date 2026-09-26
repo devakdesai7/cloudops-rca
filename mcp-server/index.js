@@ -14,6 +14,9 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { queryLogs } from "./lib/queryLogs.js";
+import { getRecentCommits, checkDeployHistory } from "./lib/gitLog.js";
+import { getRunbook } from "./lib/getRunbook.js";
+import { applyFix } from "./lib/applyFix.js";
 
 const server = new McpServer({
   name: "cloudops-rca-tools",
@@ -73,18 +76,9 @@ server.registerTool(
     }),
   },
   async ({ service, since }) => {
-    // TODO: implement real git log query for the service's repository
-    const placeholder = [
-      {
-        sha: "0000000000000000000000000000000000000000",
-        message: "placeholder — real implementation pending",
-        author: "unknown",
-        date: new Date().toISOString(),
-        filesChanged: [],
-      },
-    ];
+    const commits = getRecentCommits({ service, since });
     return {
-      content: [{ type: "text", text: JSON.stringify(placeholder, null, 2) }],
+      content: [{ type: "text", text: JSON.stringify(commits, null, 2) }],
     };
   }
 );
@@ -104,10 +98,9 @@ server.registerTool(
     }),
   },
   async ({ service }) => {
-    // TODO: load runbook from disk or a knowledge base
-    const placeholder = `# Runbook: ${service}\n\n> TODO: real runbook content pending.\n`;
+    const content = getRunbook({ service });
     return {
-      content: [{ type: "text", text: placeholder }],
+      content: [{ type: "text", text: content }],
     };
   }
 );
@@ -126,16 +119,9 @@ server.registerTool(
     }),
   },
   async ({ service }) => {
-    // TODO: query deployment records for the service
-    const placeholder = [
-      {
-        timestamp: new Date().toISOString(),
-        commitSha: "0000000000000000000000000000000000000000",
-        description: `placeholder — real deploy history for ${service} pending`,
-      },
-    ];
+    const history = checkDeployHistory({ service });
     return {
-      content: [{ type: "text", text: JSON.stringify(placeholder, null, 2) }],
+      content: [{ type: "text", text: JSON.stringify(history, null, 2) }],
     };
   }
 );
@@ -165,13 +151,9 @@ server.registerTool(
     }),
   },
   async ({ service, commitSha, action, details }) => {
-    // TODO: implement real fix application (git revert, config patch, etc.)
-    const placeholder = {
-      status: "pending",
-      message: `placeholder — fix not applied. service=${service} commitSha=${commitSha} action=${action} details=${JSON.stringify(details ?? {})}`,
-    };
+    const result = applyFix({ service, commitSha, action, details });
     return {
-      content: [{ type: "text", text: JSON.stringify(placeholder, null, 2) }],
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
   }
 );
