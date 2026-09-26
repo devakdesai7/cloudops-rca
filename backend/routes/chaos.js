@@ -32,7 +32,7 @@ const router = express.Router();
 //   default: ../cloudops-sample-infra/ (sibling of cloudops-rca/)
 const INFRA_REPO_PATH = process.env.INFRA_REPO_PATH
   ? path.resolve(process.env.INFRA_REPO_PATH)
-  : path.resolve(__dirname, '../../../cloudops-sample-infra');
+  : path.resolve(__dirname, '../../../../cloudops-sample-infra');
 
 const INFRA_ENV_FILE = path.join(INFRA_REPO_PATH, '.env');
 
