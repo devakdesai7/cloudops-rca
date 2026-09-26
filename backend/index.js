@@ -5,6 +5,9 @@ const cors = require('cors');
 const pool = require('./db/pool');
 const authRouter = require('./routes/auth');
 const incidentsRouter = require('./routes/incidents');
+const approveRouter = require('./routes/approve');
+const chaosRouter = require('./routes/chaos');
+const reportRouter = require('./routes/report');
 const { requireAuth } = require('./middleware/auth');
 const { attachWsServer } = require('./lib/wsServer');
 
@@ -18,6 +21,16 @@ app.use(express.json());
 // ── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRouter);
 app.use('/api/incidents', requireAuth, incidentsRouter);
+
+// Approval — nested under /api/incidents/:id/approve
+// (requireAuth already applied via the incidents prefix above)
+app.use('/api/incidents/:id/approve', requireAuth, approveRouter);
+
+// Report — GET /api/incidents/:id/report
+app.use('/api/incidents/:id/report', requireAuth, reportRouter);
+
+// Chaos — dev-only, approver role checked inside the router
+app.use('/api/chaos', requireAuth, chaosRouter);
 
 // ── Health check ─────────────────────────────────────────────────────────────
 // GET /api/health  — also runs SELECT 1 to verify Neon connectivity.
