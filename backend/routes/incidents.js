@@ -7,8 +7,49 @@
 const express = require('express');
 const { randomUUID } = require('crypto');
 const { spawn } = require('child_process');
+const { readFileSync } = require('fs');
+const { resolve } = require('path');
 const pool = require('../db/pool');
 const bobProcesses = require('../lib/bobProcesses');
+
+// Path to the triage prompt template (relative to this file → up two dirs → mcp-server)
+const PROMPT_TEMPLATE_PATH = resolve(
+  __dirname, '../../mcp-server/prompts/triage-debug.md'
+);
+
+// ── Resolve bobshell's JS entry point at startup ──────────────────────────────
+// We spawn `node <bob.js>` directly instead of the `bob` / `bob.cmd` wrapper.
+// This bypasses cmd.exe on Windows entirely — the prompt string goes straight
+// into process.argv as raw bytes, so ", <, >, |, & etc. are never interpreted
+// as shell metacharacters. The same spawn call works unchanged on Linux/Docker.
+//
+// Resolution order: env var override → Windows global npm → Linux/Mac global npm
+// If none resolve, the server logs a clear error at startup instead of failing
+// silently per-incident.
+let BOB_SCRIPT;
+try {
+  BOB_SCRIPT = process.env.BOB_SCRIPT_PATH
+    // Allow explicit override (useful in Docker: set BOB_SCRIPT_PATH in the image)
+    ? resolve(process.env.BOB_SCRIPT_PATH)
+    // Resolve through Node's module system, searching standard global install paths
+    : require.resolve('bobshell', {
+        paths: [
+          // Windows: %APPDATA%\npm\node_modules  (where npm i -g installs)
+          resolve(process.env.APPDATA || '', 'npm', 'node_modules'),
+          // Linux / Docker: standard global npm prefix locations
+          '/usr/local/lib/node_modules',
+          '/usr/lib/node_modules',
+        ],
+      });
+  console.log(`Bob script resolved: ${BOB_SCRIPT}`);
+} catch (resolveErr) {
+  console.error(
+    'ERROR: Could not resolve bobshell/dist/bob.js. ' +
+    'Install bob globally (npm i -g bobshell-*.tgz) or set BOB_SCRIPT_PATH. ' +
+    `Detail: ${resolveErr.message}`
+  );
+  // BOB_SCRIPT stays undefined; spawnBobForIncident will catch it per-incident.
+}
 
 const router = express.Router();
 
@@ -88,23 +129,63 @@ async function markInvestigationFailed(incidentId) {
  * Stores the process entry in the shared bobProcesses map.
  */
 function spawnBobForIncident(incidentId, summary, affectedEndpoint) {
-  const prompt =
-    `You are running the triage-debug workflow for incident ${incidentId}. ` +
-    `Summary: ${summary}. ` +
-    `Affected endpoint: ${affectedEndpoint || 'unknown'}. ` +
-    `Run the triage-debug workflow: investigate all relevant services, emit BOB_EVENT lines ` +
-    `as defined in the shared contract, and conclude with an awaiting_approval event.`;
+  // ── Guard: bob.js must have been resolved at startup ─────────────────────
+  if (!BOB_SCRIPT) {
+    console.error(`[bob:${incidentId}] Cannot spawn Bob — bobshell script not resolved. Check startup logs.`);
+    markInvestigationFailed(incidentId);
+    return;
+  }
+
+  // ── Load and substitute the prompt template ───────────────────────────────
+  let prompt;
+  try {
+    const template = readFileSync(PROMPT_TEMPLATE_PATH, 'utf8');
+    // No newline collapsing needed — we never pass the prompt through a shell,
+    // so \n, ", <, >, | etc. are all inert. Keeping original newlines gives
+    // the LLM cleaner markdown structure to reason over.
+    prompt = template
+      .replace('{{INCIDENT_SUMMARY}}', summary)
+      .replace('{{INCIDENT_ENDPOINT}}', affectedEndpoint || 'unknown');
+  } catch (readErr) {
+    console.error(`[bob:${incidentId}] Failed to read prompt template:`, readErr.message);
+    markInvestigationFailed(incidentId);
+    return;
+  }
+
+  // ── Spawn Bob directly via node — no shell, no cmd.exe ───────────────────
+  // We call `node <bobshell/dist/bob.js>` instead of the `bob` / `bob.cmd`
+  // wrapper. node is a real .exe on Windows — spawn('node', [...]) needs no
+  // shell, so the prompt string lands in process.argv as raw bytes regardless
+  // of what characters it contains. Identical on Linux/Docker.
+  //
+  // The prompt is passed as the final positional argument: `bob run [options] [prompt...]`
+  // --max-turns / --max-cost guard against runaway cost on every run.
+  // --format stream-json is intentionally omitted — it changes stdout to NDJSON,
+  // which would break the BOB_EVENT: line parser below.
+  const bobArgs = [
+    BOB_SCRIPT,
+    'run',
+    '--format', 'stream-json',
+    '--trust',
+    '--accept-license',
+    '--max-turns', '40',
+    '--max-cost', '3.00',
+  ];
+
+  console.log(`[bob:${incidentId}] Prompt length: ${prompt.length} chars`);
 
   let proc;
   try {
-    proc = spawn('bob', ['-p', prompt], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      // Inherit the current environment so bob can find its config
+    proc = spawn('node', bobArgs, {
+      cwd: resolve(__dirname, '../../'), // Run from cloudops-rca root!
+      stdio: ['pipe', 'pipe', 'pipe'],
       env: process.env,
     });
+    proc.stdin.write(prompt, 'utf8');
+    proc.stdin.end();
   } catch (spawnErr) {
-    // spawn() itself threw synchronously — command not found at OS level
-    console.error(`[bob:${incidentId}] Failed to spawn bob:`, spawnErr.message);
+    // spawn() itself threw synchronously — node not found (should never happen)
+    console.error(`[bob:${incidentId}] Failed to spawn node:`, spawnErr.message);
     markInvestigationFailed(incidentId);
     return;
   }
@@ -128,48 +209,52 @@ function spawnBobForIncident(incidentId, summary, affectedEndpoint) {
     markInvestigationFailed(incidentId);
   }
 
-  // ── stdout: buffer + split on newlines ──────────────────────────────────────
-  let lineBuffer = '';
+  // ── stdout: parse NDJSON stream & extract BOB_EVENTs ───────────────────────
+  let streamBuffer = '';
+  let llmTextBuffer = '';
 
   proc.stdout.on('data', (chunk) => {
-    lineBuffer += chunk.toString();
-    const lines = lineBuffer.split('\n');
+    streamBuffer += chunk.toString();
+    const lines = streamBuffer.split('\n');
     // Keep the last (potentially incomplete) fragment in the buffer
-    lineBuffer = lines.pop();
+    streamBuffer = lines.pop();
 
     for (const line of lines) {
-      // Notify any additional listeners registered by the WebSocket task
+      // Notify WebSocket listeners with the raw stream chunk
       for (const listener of entry.listeners) {
         try { listener(line); } catch (_) { /* ignore listener errors */ }
       }
 
-      const BOB_EVENT_PREFIX = 'BOB_EVENT:';
-      if (!line.startsWith(BOB_EVENT_PREFIX)) continue;
+      if (!line.trim()) continue;
 
-      const jsonStr = line.slice(BOB_EVENT_PREFIX.length).trim();
-      let event;
+      let obj;
       try {
-        event = JSON.parse(jsonStr);
-      } catch (parseErr) {
-        console.warn(`[bob:${incidentId}] Could not parse BOB_EVENT JSON: ${jsonStr}`);
-        continue;
+        obj = JSON.parse(line);
+      } catch (err) {
+        continue; // Not a valid NDJSON chunk
       }
 
-      console.log(`[bob:${incidentId}] BOB_EVENT received:`, event);
+      // CRITICAL: Ignore echoed prompt!
+      // This prevents the "phantom event" bug where the backend parses the instructions.
+      if (obj.type === 'message' && obj.role === 'user') continue;
 
-      switch (event.type) {
-        case 'subagent_update':
-          handleSubagentUpdate(incidentId, event);
-          break;
-        case 'hypothesis_ready':
-          handleHypothesisReady(incidentId, event);
-          break;
-        case 'awaiting_approval':
-          handleAwaitingApproval(incidentId);
-          break;
-        default:
-          // Unknown event types are logged but not fatal
-          console.log(`[bob:${incidentId}] Unknown BOB_EVENT type: ${event.type}`);
+      // Accumulate real generated text from assistant chunks or subagent tool results
+      let newText = '';
+      if (obj.type === 'message' && obj.role === 'assistant' && obj.content) {
+        newText = obj.content;
+      } else if (obj.type === 'tool_result' && obj.output) {
+        newText = obj.output;
+      }
+
+      if (newText) {
+        llmTextBuffer += newText;
+        // Check for complete lines in the accumulated LLM text
+        const textLines = llmTextBuffer.split('\n');
+        llmTextBuffer = textLines.pop();
+
+        for (const textLine of textLines) {
+          parseAndDispatchBobEvent(incidentId, textLine);
+        }
       }
     }
   });
@@ -181,7 +266,6 @@ function spawnBobForIncident(incidentId, summary, affectedEndpoint) {
 
   // ── process exit ────────────────────────────────────────────────────────────
   proc.on('error', (err) => {
-    // Emitted when the process could not be spawned (e.g. ENOENT) or killed
     console.error(`[bob:${incidentId}] Bob process error:`, err.message);
     entry.status = 'exited';
     entry.exitCode = null;
@@ -192,22 +276,9 @@ function spawnBobForIncident(incidentId, summary, affectedEndpoint) {
     entry.status = 'exited';
     entry.exitCode = code;
 
-    // Flush any remaining buffered content that didn't end with a newline
-    if (lineBuffer.trim()) {
-      const line = lineBuffer.trim();
-      lineBuffer = '';
-      for (const listener of entry.listeners) {
-        try { listener(line); } catch (_) { /* ignore */ }
-      }
-      const BOB_EVENT_PREFIX = 'BOB_EVENT:';
-      if (line.startsWith(BOB_EVENT_PREFIX)) {
-        try {
-          const event = JSON.parse(line.slice(BOB_EVENT_PREFIX.length).trim());
-          if (event.type === 'subagent_update') handleSubagentUpdate(incidentId, event);
-          else if (event.type === 'hypothesis_ready') handleHypothesisReady(incidentId, event);
-          else if (event.type === 'awaiting_approval') handleAwaitingApproval(incidentId);
-        } catch (_) { /* ignore */ }
-      }
+    // Flush any remaining text in the LLM buffer
+    if (llmTextBuffer.trim()) {
+      parseAndDispatchBobEvent(incidentId, llmTextBuffer);
     }
 
     if (code !== 0) {
@@ -217,6 +288,74 @@ function spawnBobForIncident(incidentId, summary, affectedEndpoint) {
       console.log(`[bob:${incidentId}] Bob exited cleanly (code 0)`);
     }
   });
+}
+
+// Helper to robustly extract and parse BOB_EVENT payloads (even with missing quotes)
+function parseAndDispatchBobEvent(incidentId, textLine) {
+  const match = textLine.match(/BOB_EVENT:\s*(\{.*?\})/);
+  if (!match) return;
+
+  const payloadStr = match[1].trim();
+  let event = {};
+
+  try {
+    // 1. Try strict standard JSON first
+    event = JSON.parse(payloadStr);
+  } catch (err) {
+    // 2. Fallback: Robust regex parser for unquoted JSON caused by CLI stripping
+    const typeMatch = payloadStr.match(/["']?type["']?\s*:\s*["']?([^,"'}]+)["']?/);
+    if (typeMatch) event.type = typeMatch[1].trim();
+
+    if (event.type === 'subagent_update') {
+      const serviceMatch = payloadStr.match(/["']?service["']?\s*:\s*["']?([^,"'}]+)["']?/);
+      if (serviceMatch) event.service = serviceMatch[1].trim();
+
+      const statusMatch = payloadStr.match(/["']?status["']?\s*:\s*["']?([^,"'}]+)["']?/);
+      if (statusMatch) event.status = statusMatch[1].trim();
+
+      const verdictMatch = payloadStr.match(/["']?verdict["']?\s*:\s*["']?(.*?)["']?(?=\}|$)/);
+      if (verdictMatch) {
+        const v = verdictMatch[1].trim();
+        event.verdict = (v === 'null') ? null : v;
+      }
+    } else if (event.type === 'hypothesis_ready') {
+      event.hypothesis = {};
+      const rcMatch = payloadStr.match(/["']?rootCauseService["']?\s*:\s*["']?([^,"'}]+)["']?/);
+      if (rcMatch) {
+        const rc = rcMatch[1].trim();
+        event.hypothesis.rootCauseService = (rc === 'null') ? null : rc;
+      }
+
+      const expMatch = payloadStr.match(/["']?explanation["']?\s*:\s*["']?(.*?)["']?\s*,\s*["']?confidence["']?/);
+      if (expMatch) event.hypothesis.explanation = expMatch[1].trim();
+
+      const confMatch = payloadStr.match(/["']?confidence["']?\s*:\s*([\d.]+)/);
+      if (confMatch) event.hypothesis.confidence = parseFloat(confMatch[1]);
+      
+      event.hypothesis.evidenceRefs = [];
+    }
+  }
+
+  if (!event.type) {
+    console.warn(`[bob:${incidentId}] Could not parse BOB_EVENT payload: ${payloadStr}`);
+    return;
+  }
+
+  console.log(`[bob:${incidentId}] BOB_EVENT received (parsed):`, event);
+
+  switch (event.type) {
+    case 'subagent_update':
+      handleSubagentUpdate(incidentId, event);
+      break;
+    case 'hypothesis_ready':
+      handleHypothesisReady(incidentId, event);
+      break;
+    case 'awaiting_approval':
+      handleAwaitingApproval(incidentId);
+      break;
+    default:
+      console.log(`[bob:${incidentId}] Unknown BOB_EVENT type: ${event.type}`);
+  }
 }
 
 // ── POST /api/incidents/trigger ───────────────────────────────────────────────

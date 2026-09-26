@@ -154,7 +154,16 @@ apply_fix(service: string, commitSha: string, action: "revert"|"config_change", 
 ### Bob ↔ Backend process contract (critical — this is the seam between your work and Shivang's)
 Shivang's backend spawns Bob as a child process per incident:
 ```
-bob -p "<prompt referencing the incident>"
+### Invocation command (headless)
+Shivang's backend must spawn Bob using this exact command shape:
+
+bob run --format stream-json --trust --accept-license --max-turns 40 --max-cost 3.00 "<prompt text>"
+
+Where <prompt text> is the full content of mcp-server/prompts/triage_debug.md
+with {{INCIDENT_SUMMARY}} and {{INCIDENT_ENDPOINT}} replaced with the real
+incident's summary and affectedEndpoint values, before being passed in.
+BOB_API_KEY must be set as an environment variable wherever this command
+runs.
 ```
 Your `triage-debug` workflow (Task 6) **must** instruct Bob to print progress as single-line, prefixed JSON to stdout, in addition to its normal reasoning output, so the backend can parse it regardless of Bob's natural language formatting:
 ```
