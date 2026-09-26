@@ -6,10 +6,9 @@ import TriageBoard from './incident/TriageBoard'
 import styles from './Home.module.css'
 
 // ---------------------------------------------------------------------------
-// Toggle this to true to run with the built-in mock event emitter instead
-// of a real WebSocket. Set to false once Shivang's backend is available.
+// Real WebSocket mode — backend + Bob pipeline are live.
 // ---------------------------------------------------------------------------
-const USE_MOCK = true
+const USE_MOCK = false
 
 export default function IncidentDetail() {
   const { incidentId } = useParams()
