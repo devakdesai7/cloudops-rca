@@ -6,6 +6,7 @@ const pool = require('./db/pool');
 const authRouter = require('./routes/auth');
 const incidentsRouter = require('./routes/incidents');
 const { requireAuth } = require('./middleware/auth');
+const { attachWsServer } = require('./lib/wsServer');
 
 const PORT = process.env.PORT || 4000;
 const app = express();
@@ -46,11 +47,15 @@ async function start() {
     process.exit(1);
   }
 
-  app.listen(PORT, () => {
+  const httpServer = app.listen(PORT, () => {
     console.log(`Backend listening on http://localhost:${PORT}`);
     console.log(`Health: http://localhost:${PORT}/api/health`);
+    console.log(`WebSocket: ws://localhost:${PORT}/ws/incidents/:incidentId`);
     console.log('NOTE: Migrations are NOT run automatically. Run "node db/migrate.js" manually once.');
   });
+
+  // Attach the WebSocket server to the same HTTP server so WS upgrades share port 4000
+  attachWsServer(httpServer);
 }
 
 start();
