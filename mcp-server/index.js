@@ -16,6 +16,7 @@ import { z } from "zod";
 import { queryLogs } from "./lib/queryLogs.js";
 import { getRecentCommits, checkDeployHistory } from "./lib/gitLog.js";
 import { getRunbook } from "./lib/getRunbook.js";
+import { applyFix } from "./lib/applyFix.js";
 
 const server = new McpServer({
   name: "cloudops-rca-tools",
@@ -150,13 +151,9 @@ server.registerTool(
     }),
   },
   async ({ service, commitSha, action, details }) => {
-    // TODO: implement real fix application (git revert, config patch, etc.)
-    const placeholder = {
-      status: "pending",
-      message: `placeholder — fix not applied. service=${service} commitSha=${commitSha} action=${action} details=${JSON.stringify(details ?? {})}`,
-    };
+    const result = applyFix({ service, commitSha, action, details });
     return {
-      content: [{ type: "text", text: JSON.stringify(placeholder, null, 2) }],
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
   }
 );
