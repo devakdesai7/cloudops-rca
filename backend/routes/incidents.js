@@ -9,59 +9,55 @@ const { randomUUID } = require('crypto');
 const { spawn } = require('child_process');
 const pool = require('../db/pool');
 const bobProcesses = require('../lib/bobProcesses');
+const incidentEmitter = require('../lib/incidentEmitter');
 
 const router = express.Router();
 
-// ── Bob event handlers ────────────────────────────────────────────────────────
+// ── Bob event → DB handlers ───────────────────────────────────────────────────
+// These subscribe to the per-incident EventEmitter and write to the database.
+// The WebSocket layer (lib/wsServer.js) also subscribes to the same emitter —
+// no parsing is duplicated.
 
-/**
- * Upsert a row in incident_services.
- * If a row with (incident_id, service) already exists, update it;
- * otherwise insert a new one.
- */
-async function handleSubagentUpdate(incidentId, event) {
-  const { service, status, verdict = null } = event;
-  try {
-    await pool.query(
-      `INSERT INTO incident_services (incident_id, service, status, verdict)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (incident_id, service)
-       DO UPDATE SET status = EXCLUDED.status,
-                     verdict = EXCLUDED.verdict`,
-      [incidentId, service, status, verdict]
-    );
-  } catch (err) {
-    console.error(`[bob:${incidentId}] subagent_update DB error:`, err.message);
-  }
-}
+function attachDbHandlers(incidentId) {
+  const ee = incidentEmitter.get(incidentId);
 
-/**
- * Write hypothesis JSON into the incidents row.
- */
-async function handleHypothesisReady(incidentId, event) {
-  const { hypothesis } = event;
-  try {
-    await pool.query(
-      `UPDATE incidents SET hypothesis_json = $1 WHERE id = $2`,
-      [JSON.stringify(hypothesis), incidentId]
-    );
-  } catch (err) {
-    console.error(`[bob:${incidentId}] hypothesis_ready DB error:`, err.message);
-  }
-}
+  ee.on('subagent_update', async (event) => {
+    const { service, status, verdict = null } = event;
+    try {
+      await pool.query(
+        `INSERT INTO incident_services (incident_id, service, status, verdict)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (incident_id, service)
+         DO UPDATE SET status = EXCLUDED.status,
+                       verdict = EXCLUDED.verdict`,
+        [incidentId, service, status, verdict]
+      );
+    } catch (err) {
+      console.error(`[bob:${incidentId}] subagent_update DB error:`, err.message);
+    }
+  });
 
-/**
- * Transition the incident to "awaiting_approval".
- */
-async function handleAwaitingApproval(incidentId) {
-  try {
-    await pool.query(
-      `UPDATE incidents SET status = 'awaiting_approval' WHERE id = $1`,
-      [incidentId]
-    );
-  } catch (err) {
-    console.error(`[bob:${incidentId}] awaiting_approval DB error:`, err.message);
-  }
+  ee.on('hypothesis_ready', async (event) => {
+    try {
+      await pool.query(
+        `UPDATE incidents SET hypothesis_json = $1 WHERE id = $2`,
+        [JSON.stringify(event.hypothesis), incidentId]
+      );
+    } catch (err) {
+      console.error(`[bob:${incidentId}] hypothesis_ready DB error:`, err.message);
+    }
+  });
+
+  ee.on('awaiting_approval', async () => {
+    try {
+      await pool.query(
+        `UPDATE incidents SET status = 'awaiting_approval' WHERE id = $1`,
+        [incidentId]
+      );
+    } catch (err) {
+      console.error(`[bob:${incidentId}] awaiting_approval DB error:`, err.message);
+    }
+  });
 }
 
 /**
@@ -82,12 +78,40 @@ async function markInvestigationFailed(incidentId) {
 
 // ── Bob process spawner ───────────────────────────────────────────────────────
 
+const BOB_EVENT_PREFIX = 'BOB_EVENT:';
+
+/**
+ * Parse a single stdout line.  If it carries a BOB_EVENT, parse the JSON and
+ * fire on the per-incident emitter.  Returns the parsed event or null.
+ */
+function dispatchLine(incidentId, line) {
+  if (!line.startsWith(BOB_EVENT_PREFIX)) return null;
+
+  const jsonStr = line.slice(BOB_EVENT_PREFIX.length).trim();
+  let event;
+  try {
+    event = JSON.parse(jsonStr);
+  } catch (_) {
+    console.warn(`[bob:${incidentId}] Could not parse BOB_EVENT JSON: ${jsonStr}`);
+    return null;
+  }
+
+  console.log(`[bob:${incidentId}] BOB_EVENT received:`, event);
+  const ee = incidentEmitter.get(incidentId);
+  ee.emit(event.type, event);
+  return event;
+}
+
 /**
  * Spawn Bob as a child process for the given incident.
- * Streams stdout line-by-line, parsing BOB_EVENT: prefixed lines.
+ * Streams stdout line-by-line, parsing BOB_EVENT: prefixed lines and
+ * firing them on the per-incident EventEmitter.
  * Stores the process entry in the shared bobProcesses map.
  */
 function spawnBobForIncident(incidentId, summary, affectedEndpoint) {
+  // Attach DB handlers to the emitter before spawning so no events are missed.
+  attachDbHandlers(incidentId);
+
   const prompt =
     `You are running the triage-debug workflow for incident ${incidentId}. ` +
     `Summary: ${summary}. ` +
@@ -99,22 +123,25 @@ function spawnBobForIncident(incidentId, summary, affectedEndpoint) {
   try {
     proc = spawn('bob', ['-p', prompt], {
       stdio: ['ignore', 'pipe', 'pipe'],
-      // Inherit the current environment so bob can find its config
       env: process.env,
+      // On Windows, npm installs 'bob' as a .cmd shim which requires the shell
+      // to execute.  This is safe: the prompt is a server-controlled string,
+      // not user input passed directly to the shell.
+      shell: process.platform === 'win32',
     });
   } catch (spawnErr) {
     // spawn() itself threw synchronously — command not found at OS level
     console.error(`[bob:${incidentId}] Failed to spawn bob:`, spawnErr.message);
     markInvestigationFailed(incidentId);
+    incidentEmitter.remove(incidentId);
     return;
   }
 
   // Register in the shared map immediately so WebSocket/approve tasks can find it
   const entry = {
     proc,
-    status: 'running',
+    status:   'running',
     exitCode: null,
-    listeners: new Set(),
   };
   bobProcesses.set(incidentId, entry);
 
@@ -136,41 +163,8 @@ function spawnBobForIncident(incidentId, summary, affectedEndpoint) {
     const lines = lineBuffer.split('\n');
     // Keep the last (potentially incomplete) fragment in the buffer
     lineBuffer = lines.pop();
-
     for (const line of lines) {
-      // Notify any additional listeners registered by the WebSocket task
-      for (const listener of entry.listeners) {
-        try { listener(line); } catch (_) { /* ignore listener errors */ }
-      }
-
-      const BOB_EVENT_PREFIX = 'BOB_EVENT:';
-      if (!line.startsWith(BOB_EVENT_PREFIX)) continue;
-
-      const jsonStr = line.slice(BOB_EVENT_PREFIX.length).trim();
-      let event;
-      try {
-        event = JSON.parse(jsonStr);
-      } catch (parseErr) {
-        console.warn(`[bob:${incidentId}] Could not parse BOB_EVENT JSON: ${jsonStr}`);
-        continue;
-      }
-
-      console.log(`[bob:${incidentId}] BOB_EVENT received:`, event);
-
-      switch (event.type) {
-        case 'subagent_update':
-          handleSubagentUpdate(incidentId, event);
-          break;
-        case 'hypothesis_ready':
-          handleHypothesisReady(incidentId, event);
-          break;
-        case 'awaiting_approval':
-          handleAwaitingApproval(incidentId);
-          break;
-        default:
-          // Unknown event types are logged but not fatal
-          console.log(`[bob:${incidentId}] Unknown BOB_EVENT type: ${event.type}`);
-      }
+      dispatchLine(incidentId, line);
     }
   });
 
@@ -183,31 +177,21 @@ function spawnBobForIncident(incidentId, summary, affectedEndpoint) {
   proc.on('error', (err) => {
     // Emitted when the process could not be spawned (e.g. ENOENT) or killed
     console.error(`[bob:${incidentId}] Bob process error:`, err.message);
-    entry.status = 'exited';
+    entry.status   = 'exited';
     entry.exitCode = null;
     handleFailure();
+    incidentEmitter.remove(incidentId);
   });
 
   proc.on('close', (code) => {
-    entry.status = 'exited';
+    entry.status   = 'exited';
     entry.exitCode = code;
 
     // Flush any remaining buffered content that didn't end with a newline
     if (lineBuffer.trim()) {
       const line = lineBuffer.trim();
       lineBuffer = '';
-      for (const listener of entry.listeners) {
-        try { listener(line); } catch (_) { /* ignore */ }
-      }
-      const BOB_EVENT_PREFIX = 'BOB_EVENT:';
-      if (line.startsWith(BOB_EVENT_PREFIX)) {
-        try {
-          const event = JSON.parse(line.slice(BOB_EVENT_PREFIX.length).trim());
-          if (event.type === 'subagent_update') handleSubagentUpdate(incidentId, event);
-          else if (event.type === 'hypothesis_ready') handleHypothesisReady(incidentId, event);
-          else if (event.type === 'awaiting_approval') handleAwaitingApproval(incidentId);
-        } catch (_) { /* ignore */ }
-      }
+      dispatchLine(incidentId, line);
     }
 
     if (code !== 0) {
@@ -216,6 +200,10 @@ function spawnBobForIncident(incidentId, summary, affectedEndpoint) {
     } else {
       console.log(`[bob:${incidentId}] Bob exited cleanly (code 0)`);
     }
+
+    // Small delay before removing the emitter so any in-flight async listeners
+    // (e.g. WS clients processing the last event) can finish cleanly.
+    setTimeout(() => incidentEmitter.remove(incidentId), 5000);
   });
 }
 
