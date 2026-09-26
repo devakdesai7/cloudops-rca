@@ -174,3 +174,18 @@ cloudops-rca/
 ├── frontend/                    ← Divy
 └── .bob/                          ← shared config; you own the workflow file inside it
 ```
+
+### Filesystem layout (sibling repos)
+mcp-server/ tools default to reading the sample infra as a sibling directory:
+`../cloudops-sample-infra/` (relative to cloudops-rca/mcp-server/lib/).
+
+If your local clone layout differs, override via environment variables in
+`.bob/mcp.json`:
+- `INFRA_REPO_PATH` — path to the cloudops-sample-infra repo root
+- `LOG_DB_PATH` — path to shared-logs.db inside it
+
+Both are optional — if unset, tools fall back to the default sibling-folder
+path above. This env-var-with-fallback pattern must be used for every
+MCP tool that reads from the sample infra (query_logs, get_recent_commits,
+check_deploy_history, and later get_runbook, apply_fix) — build it in from
+the start for new tools, don't retrofit later.
