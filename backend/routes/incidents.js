@@ -11,6 +11,7 @@ const { readFileSync } = require('fs');
 const { resolve } = require('path');
 const pool = require('../db/pool');
 const bobProcesses = require('../lib/bobProcesses');
+const incidentEmitter = require('../lib/incidentEmitter');
 
 // Path to the triage prompt template (relative to this file → up two dirs → mcp-server)
 const PROMPT_TEMPLATE_PATH = resolve(
@@ -287,6 +288,9 @@ function spawnBobForIncident(incidentId, summary, affectedEndpoint) {
     } else {
       console.log(`[bob:${incidentId}] Bob exited cleanly (code 0)`);
     }
+
+    // Small delay before removing the emitter so any in-flight async WS listeners can finish.
+    setTimeout(() => incidentEmitter.remove(incidentId), 5000);
   });
 }
 
@@ -342,6 +346,10 @@ function parseAndDispatchBobEvent(incidentId, textLine) {
   }
 
   console.log(`[bob:${incidentId}] BOB_EVENT received (parsed):`, event);
+
+  // Broadcast to WebSocket clients
+  const ee = incidentEmitter.get(incidentId);
+  ee.emit(event.type, event);
 
   switch (event.type) {
     case 'subagent_update':
