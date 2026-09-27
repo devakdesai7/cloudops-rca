@@ -264,8 +264,31 @@ function spawnBobForIncident(incidentId, summary, affectedEndpoint) {
       }
 
       // CRITICAL: Ignore echoed prompt!
-      // This prevents the "phantom event" bug where the backend parses the instructions.
       if (obj.type === 'message' && obj.role === 'user') continue;
+
+      // Phase 2 & 3: Terminal Logging, DB persistence, and WebSocket Relay for Tool Calls
+      if (obj.type === 'tool_use') {
+        const rawName = obj.tool_name || 'unknown';
+        const cleanName = rawName.split('__').pop(); 
+        const args = JSON.stringify(obj.parameters || {});
+        console.log(`[bob:${incidentId}] 🛠️ TOOL CALL: ${cleanName} args: ${args}`);
+        
+        const tcEvent = {
+          type: 'tool_call',
+          name: cleanName,
+          args: obj.parameters || {},
+          timestamp: obj.timestamp || new Date().toISOString()
+        };
+        
+        // 1. Emit to WebSocket
+        incidentEmitter.get(incidentId).emit('tool_call', tcEvent);
+        
+        // 2. Append to Database
+        pool.query(
+          `UPDATE incidents SET tool_calls_json = tool_calls_json || $1::jsonb WHERE id = $2`,
+          [JSON.stringify([tcEvent]), incidentId]
+        ).catch(err => console.error(`[bob:${incidentId}] tool_call DB error:`, err.message));
+      }
 
       // Accumulate real generated text from assistant chunks or subagent tool results
       let newText = '';
@@ -460,7 +483,7 @@ router.get('/:id', async (req, res) => {
     // Main incident row
     const { rows: iRows } = await pool.query(
       `SELECT id, summary, affected_endpoint, status,
-              hypothesis_json, proposed_fix_json,
+              hypothesis_json, proposed_fix_json, tool_calls_json,
               created_at, resolved_at, time_to_resolution_ms
        FROM incidents
        WHERE id = $1`,
@@ -515,6 +538,7 @@ router.get('/:id', async (req, res) => {
       })),
       hypothesis:  inc.hypothesis_json    ?? null,
       proposedFix: inc.proposed_fix_json  ?? null,
+      toolCalls:   inc.tool_calls_json    ?? [],
       approval: {
         status:     approvalStatus,
         approvedBy: approvalRow?.approved_by  ?? null,

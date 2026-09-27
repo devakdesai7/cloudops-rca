@@ -13,6 +13,7 @@ CREATE TABLE incidents (
   status TEXT NOT NULL,
   hypothesis_json JSONB,
   proposed_fix_json JSONB,
+  tool_calls_json JSONB DEFAULT '[]'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   resolved_at TIMESTAMPTZ,
   time_to_resolution_ms INTEGER

@@ -49,6 +49,8 @@ function toWireMessage(event) {
       return { type: 'fix_applied', result: event.result };
     case 'incident_resolved':
       return { type: 'incident_resolved', timeToResolutionMs: event.timeToResolutionMs };
+    case 'tool_call':
+      return event;
     default:
       // Forward unknown future event types unchanged so clients aren't blind to them
       return event;
@@ -103,6 +105,7 @@ function attachWsServer(httpServer) {
       'awaiting_approval',
       'fix_applied',
       'incident_resolved',
+      'tool_call',
     ];
     for (const t of EVENT_TYPES) {
       ee.on(t, broadcast);

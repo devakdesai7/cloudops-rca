@@ -65,7 +65,7 @@ router.get('/', async (req, res) => {
     const [iRes, sRes, aRes] = await Promise.all([
       pool.query(
         `SELECT id, summary, affected_endpoint, status,
-                hypothesis_json, proposed_fix_json,
+                hypothesis_json, proposed_fix_json, tool_calls_json,
                 created_at, resolved_at, time_to_resolution_ms
          FROM incidents WHERE id = $1`,
         [incidentId]
@@ -223,6 +223,25 @@ router.get('/', async (req, res) => {
     lines.push(`| Incident resolved | ${fmtDate(inc.resolved_at)} |`);
   }
   lines.push('');
+
+  // ── Tool Execution Audit Log ─────────────────────────────────────────────
+  const toolCalls = inc.tool_calls_json || [];
+  if (toolCalls.length > 0) {
+    lines.push('## 🛠️ Tool Execution Audit Log');
+    lines.push('');
+    for (const tc of toolCalls) {
+      lines.push(`### \`${tc.name}\``);
+      if (tc.timestamp) {
+        lines.push(`**Time:** ${fmtDate(tc.timestamp)}`);
+        lines.push('');
+      }
+      lines.push('**Arguments:**');
+      lines.push('```json');
+      lines.push(JSON.stringify(tc.args, null, 2));
+      lines.push('```');
+      lines.push('');
+    }
+  }
 
   // ── Footer ─────────────────────────────────────────────────────────────
   lines.push('---');
