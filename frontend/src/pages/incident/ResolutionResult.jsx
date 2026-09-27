@@ -24,6 +24,7 @@
  */
 
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import styles from './ResolutionResult.module.css'
 
 // ---------------------------------------------------------------------------
@@ -121,8 +122,8 @@ export default function ResolutionResult({
         </div>
       )}
 
-      {/* Rollback */}
-      <div className={styles.rollbackRow}>
+      {/* Actions (Rollback & Report) */}
+      <div className={styles.actionRow}>
         <button
           className={styles.btnRollback}
           disabled={!canRollback || rollbackPhase === 'in-flight'}
@@ -130,9 +131,9 @@ export default function ResolutionResult({
         >
           {rollbackPhase === 'in-flight' ? 'Rolling back…' : '↩ Rollback Fix'}
         </button>
-        <span className={styles.rollbackNote}>
-          ⚠ Assumes POST /api/incidents/:id/rollback — pending Shivang confirmation
-        </span>
+        <Link to={`/incidents/${incidentId}/report`} className={styles.btnReport}>
+          📄 View Full Report
+        </Link>
         {rollbackPhase === 'done' && (
           <p className={styles.rollbackSuccess}>Rollback initiated successfully.</p>
         )}

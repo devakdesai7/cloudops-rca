@@ -102,9 +102,9 @@
   margin: 0 0 0.5rem;
 }
 
-/* ── Rollback button ─────────────────────────────────────────────────────── */
+/* ── Action Row (Rollback & Report) ────────────────────────────────────────── */
 
-.rollbackRow {
+.actionRow {
   margin-top: 0.75rem;
   display: flex;
   align-items: center;
@@ -131,10 +131,24 @@
 
 .btnRollback:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.rollbackNote {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  font-style: italic;
+.btnReport {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 0.45rem 1.1rem;
+  font-size: 0.83rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.btnReport:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--border-hover);
 }
 
 .rollbackError   { font-size: 0.82rem; color: #f85149; margin: 0; }
