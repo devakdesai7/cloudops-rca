@@ -10,21 +10,20 @@
 //
 // Approve flow:
 //   1. Validate incident exists and is in awaiting_approval state
-//   2. Record the approval row regardless of action
-//   3. If "approve": write "APPROVED\n" to Bob's stdin so the workflow can
-//      proceed to call apply_fix. Wait up to 60 s for a fix_applied BOB_EVENT.
-//      On success: update incident status → resolved, set resolved_at and
-//      time_to_resolution_ms, broadcast fix_applied + incident_resolved.
-//      On timeout or process already exited: update to resolved anyway and
-//      broadcast with a synthetic result noting the timeout.
-//   4. If "reject": update status → rejected, broadcast nothing further.
+//   2. Record the approval row
+//   3. Update incidents.status → "approved" or "rejected"
+//   4. Respond immediately
+//
+//   The Bob process (Phase 1) is still alive, blocking inside the
+//   wait_for_approval MCP tool which polls GET /internal/incidents/:id/status.
+//   Once it detects "approved", it wakes up, calls apply_fix, emits fix_applied,
+//   and the parseAndDispatchBobEvent pipeline in incidents.js resolves the
+//   incident in the DB and broadcasts incident_resolved over WebSocket.
 
 'use strict';
 
 const express = require('express');
 const pool = require('../db/pool');
-const bobProcesses = require('../lib/bobProcesses');
-const incidentEmitter = require('../lib/incidentEmitter');
 const { requireRole } = require('../middleware/auth');
 
 const router = express.Router({ mergeParams: true });
@@ -43,7 +42,7 @@ router.post('/', requireRole('approver'), async (req, res) => {
   let incident;
   try {
     const { rows } = await pool.query(
-      `SELECT id, status, created_at FROM incidents WHERE id = $1`,
+      `SELECT id, status FROM incidents WHERE id = $1`,
       [incidentId]
     );
     if (rows.length === 0) {
@@ -73,86 +72,26 @@ router.post('/', requireRole('approver'), async (req, res) => {
     return res.status(500).json({ error: 'Internal server error' });
   }
 
-  // ── 3a. REJECT ───────────────────────────────────────────────────────────
-  if (action === 'reject') {
-    try {
-      await pool.query(
-        `UPDATE incidents SET status = 'rejected' WHERE id = $1`,
-        [incidentId]
-      );
-    } catch (err) {
-      console.error(`[approve:${incidentId}] Reject update error:`, err.message);
-      return res.status(500).json({ error: 'Internal server error' });
-    }
-    console.log(`[approve:${incidentId}] Rejected by ${req.user.id}`);
-    return res.json({ status: 'rejected' });
+  // ── 3. Update incident status ─────────────────────────────────────────────
+  // "approved" → Bob's wait_for_approval tool will detect this and call apply_fix.
+  // "rejected" → Bob's wait_for_approval tool will detect this and exit cleanly.
+  const newStatus = action === 'approve' ? 'approved' : 'rejected';
+
+  try {
+    await pool.query(
+      `UPDATE incidents SET status = $1 WHERE id = $2`,
+      [newStatus, incidentId]
+    );
+  } catch (err) {
+    console.error(`[approve:${incidentId}] Status update error:`, err.message);
+    return res.status(500).json({ error: 'Internal server error' });
   }
 
-  // ── 3b. APPROVE ──────────────────────────────────────────────────────────
-  // Signal Bob to proceed by writing to stdin, then wait up to 60 s for
-  // a fix_applied BOB_EVENT before responding.
+  console.log(`[approve:${incidentId}] Action "${action}" recorded — status set to "${newStatus}"`);
 
-  const APPLY_TIMEOUT_MS = 60_000;
-  const entry = bobProcesses.get(incidentId);
-
-  // Attempt to un-pause Bob by sending "APPROVED" to its stdin.
-  if (entry && entry.status === 'running' && entry.proc.stdin && !entry.proc.stdin.destroyed) {
-    try {
-      entry.proc.stdin.write('APPROVED\n', 'utf8');
-      console.log(`[approve:${incidentId}] Sent APPROVED to Bob stdin`);
-    } catch (stdinErr) {
-      console.warn(`[approve:${incidentId}] Could not write to Bob stdin:`, stdinErr.message);
-    }
-  } else {
-    console.warn(`[approve:${incidentId}] Bob process not available — will resolve directly`);
-  }
-
-  // Wait for Bob to emit fix_applied, with a timeout fallback.
-  const ee = incidentEmitter.get(incidentId);
-
-  const resolveIncident = async (fixResult) => {
-    const now = new Date();
-    const createdAt = new Date(incident.created_at);
-    const timeToResolutionMs = now.getTime() - createdAt.getTime();
-
-    try {
-      await pool.query(
-        `UPDATE incidents
-         SET status = 'resolved',
-             resolved_at = now(),
-             time_to_resolution_ms = $1
-         WHERE id = $2`,
-        [timeToResolutionMs, incidentId]
-      );
-    } catch (err) {
-      console.error(`[approve:${incidentId}] Resolve update error:`, err.message);
-    }
-
-    // Broadcast both fix_applied and incident_resolved over WebSocket
-    ee.emit('fix_applied', { type: 'fix_applied', result: fixResult });
-    ee.emit('incident_resolved', { type: 'incident_resolved', timeToResolutionMs });
-
-    console.log(`[approve:${incidentId}] Resolved in ${timeToResolutionMs} ms`);
-    return timeToResolutionMs;
-  };
-
-  // Race: fix_applied event vs. timeout
-  const fixResult = await new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      ee.removeListener('fix_applied', onFixApplied);
-      resolve('fix applied (approval timed out waiting for Bob confirmation)');
-    }, APPLY_TIMEOUT_MS);
-
-    function onFixApplied(event) {
-      clearTimeout(timer);
-      resolve(event.result ?? 'fix applied');
-    }
-
-    ee.once('fix_applied', onFixApplied);
-  });
-
-  await resolveIncident(fixResult);
-  return res.json({ status: 'applied' });
+  // ── 4. Respond immediately ────────────────────────────────────────────────
+  // Bob is still alive and will handle the rest asynchronously.
+  return res.json({ status: action === 'approve' ? 'applied' : 'rejected' });
 });
 
 module.exports = router;

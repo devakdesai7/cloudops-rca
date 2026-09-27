@@ -32,6 +32,24 @@ app.use('/api/incidents/:id/report', requireAuth, reportRouter);
 // Chaos — dev-only, approver role checked inside the router
 app.use('/api/chaos', requireAuth, chaosRouter);
 
+// ── Internal status endpoint (no auth) ───────────────────────────────────────
+// Used exclusively by the wait_for_approval MCP tool running inside Bob.
+// Returns only the status field — no sensitive data exposed.
+// Safe: only accessible on localhost (not routed externally in production).
+app.get('/internal/incidents/:id/status', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT status FROM incidents WHERE id = $1`,
+      [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'not found' });
+    res.json({ status: rows[0].status });
+  } catch (err) {
+    console.error('Internal status endpoint error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ── Health check ─────────────────────────────────────────────────────────────
 // GET /api/health  — also runs SELECT 1 to verify Neon connectivity.
 app.get('/api/health', async (req, res) => {

@@ -17,6 +17,7 @@ import { queryLogs } from "./lib/queryLogs.js";
 import { getRecentCommits, checkDeployHistory } from "./lib/gitLog.js";
 import { getRunbook } from "./lib/getRunbook.js";
 import { applyFix } from "./lib/applyFix.js";
+import { waitForApproval } from "./lib/waitForApproval.js";
 
 const server = new McpServer({
   name: "cloudops-rca-tools",
@@ -154,6 +155,31 @@ server.registerTool(
     const result = applyFix({ service, commitSha, action, details });
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
+// ---------------------------------------------------------------------------
+// wait_for_approval
+// Blocks until a human approves or rejects the incident via the UI.
+// Returns { decision: "approved" | "rejected" | "timeout" }
+// ---------------------------------------------------------------------------
+server.registerTool(
+  "wait_for_approval",
+  {
+    description:
+      "Block until a human approves or rejects the incident via the approval UI. " +
+      "Call this immediately after emitting the awaiting_approval BOB_EVENT. " +
+      "Returns { decision: 'approved' | 'rejected' | 'timeout' }. " +
+      "Only proceed to apply_fix if decision is 'approved'.",
+    inputSchema: z.object({
+      incidentId: z.string().describe("The UUID of the incident to wait for approval on"),
+    }),
+  },
+  async ({ incidentId }) => {
+    const result = await waitForApproval({ incidentId });
+    return {
+      content: [{ type: "text", text: JSON.stringify(result) }],
     };
   }
 );

@@ -4,6 +4,7 @@ following steps exactly as specified.
 The specific incident this run concerns is provided below. Use this,
 not a placeholder, as the subject of Step 1:
 
+Incident ID: {{INCIDENT_ID}}
 Incident summary: {{INCIDENT_SUMMARY}}
 Affected endpoint: {{INCIDENT_ENDPOINT}}
 
@@ -54,12 +55,32 @@ Print the following event exactly:
 
 ## Step 5
 Propose a concrete fix using the `apply_fix` tool's supported actions.
-Do NOT call `apply_fix` — only propose what you would call and with what
-arguments.
+Do NOT call `apply_fix` yet — only decide what you would call and with what
+arguments. Retain these parameters in memory for Step 7.
 Print the following event exactly:
 `BOB_EVENT:{"type":"awaiting_approval"}`
 When proposing a config_change action, the details object MUST use
 exactly these field names: { "envVar": "<name>", "newValue": "<value>" }.
 Do not use any other field names for this object.
 
-**STOP HERE.** Do not proceed past Step 5 automatically.
+## Step 6
+Immediately after printing the awaiting_approval BOB_EVENT, call the
+`wait_for_approval` tool with the Incident ID shown at the top of this
+prompt. Do NOT proceed to Step 7 until the tool returns a result.
+This tool will block while it waits for a human to approve or reject
+the proposed fix in the UI. This is expected — just wait.
+
+## Step 7
+Read the `decision` field from the `wait_for_approval` result:
+
+- If decision is `"approved"`:
+  Call the `apply_fix` tool using exactly the service, commitSha, action,
+  and details parameters you identified in Step 5. Do not re-investigate.
+  Use the exact parameters you already decided on.
+  Once apply_fix returns, print the following event exactly (replace the
+  result field with a one-line summary from apply_fix's returned message):
+  `BOB_EVENT:{"type":"fix_applied","result":"<one-line summary>"}`
+  Then exit.
+
+- If decision is `"rejected"` or `"timeout"`:
+  Print nothing further. Exit immediately.

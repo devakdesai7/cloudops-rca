@@ -107,6 +107,33 @@ async function handleAwaitingApproval(incidentId) {
 }
 
 /**
+ * Resolve the incident once Bob has applied the fix.
+ * Sets status → resolved, records resolved_at and time_to_resolution_ms.
+ */
+async function handleFixApplied(incidentId, event) {
+  try {
+    const { rows } = await pool.query(
+      `SELECT created_at FROM incidents WHERE id = $1`,
+      [incidentId]
+    );
+    if (!rows.length) return;
+    const timeToResolutionMs = Date.now() - new Date(rows[0].created_at).getTime();
+    await pool.query(
+      `UPDATE incidents
+       SET status = 'resolved',
+           resolved_at = now(),
+           time_to_resolution_ms = $1,
+           proposed_fix_json = $2
+       WHERE id = $3`,
+      [timeToResolutionMs, JSON.stringify({ result: event.result ?? null }), incidentId]
+    );
+    console.log(`[bob:${incidentId}] Incident resolved in ${timeToResolutionMs} ms`);
+  } catch (err) {
+    console.error(`[bob:${incidentId}] fix_applied DB error:`, err.message);
+  }
+}
+
+/**
  * Mark the incident as investigation_failed so it never stays stuck
  * in "investigating" after the Bob process exits with an error.
  */
@@ -145,6 +172,7 @@ function spawnBobForIncident(incidentId, summary, affectedEndpoint) {
     // so \n, ", <, >, | etc. are all inert. Keeping original newlines gives
     // the LLM cleaner markdown structure to reason over.
     prompt = template
+      .replace('{{INCIDENT_ID}}', incidentId)
       .replace('{{INCIDENT_SUMMARY}}', summary)
       .replace('{{INCIDENT_ENDPOINT}}', affectedEndpoint || 'unknown');
   } catch (readErr) {
@@ -170,7 +198,7 @@ function spawnBobForIncident(incidentId, summary, affectedEndpoint) {
     '--trust',
     '--accept-license',
     '--max-turns', '40',
-    '--max-cost', '3.00',
+    '--max-cost', '1.00',
   ];
 
   console.log(`[bob:${incidentId}] Prompt length: ${prompt.length} chars`);
@@ -183,7 +211,7 @@ function spawnBobForIncident(incidentId, summary, affectedEndpoint) {
       env: process.env,
     });
     proc.stdin.write(prompt, 'utf8');
-    proc.stdin.end();
+    proc.stdin.end(); // EOF signals Bob the prompt is complete — Bob starts processing immediately.
   } catch (spawnErr) {
     // spawn() itself threw synchronously — node not found (should never happen)
     console.error(`[bob:${incidentId}] Failed to spawn node:`, spawnErr.message);
@@ -360,6 +388,9 @@ function parseAndDispatchBobEvent(incidentId, textLine) {
       break;
     case 'awaiting_approval':
       handleAwaitingApproval(incidentId);
+      break;
+    case 'fix_applied':
+      handleFixApplied(incidentId, event);
       break;
     default:
       console.log(`[bob:${incidentId}] Unknown BOB_EVENT type: ${event.type}`);
