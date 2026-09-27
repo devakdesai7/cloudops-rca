@@ -4,18 +4,24 @@
  * Renders live service investigation cards for one incident.
  *
  * Props:
- *   incidentId  {string}   — used to build the WebSocket URL
- *   initialServices {Array<{ service, status, verdict }>}
- *                          — seed state from GET /api/incidents/:id
- *   useMock     {boolean}  — when true, skips the real WS and replays
- *                            synthetic events on a timer so the animations
- *                            can be verified without a running backend.
- *                            ⚠️  Remove / set to false before shipping.
+ *   incidentId            {string}    — used to build the WebSocket URL
+ *   initialServices       {Array<{ service, status, verdict }>}
+ *                                    — seed state from GET /api/incidents/:id
+ *   onHypothesis          {Function}  — called with hypothesis object (hypothesis_ready)
+ *   onAwaitingApproval    {Function}  — called with proposedFix object when awaiting_approval
+ *   onFixApplied          {Function}  — called with result string (fix_applied)
+ *   onIncidentResolved    {Function}  — called with timeToResolutionMs (incident_resolved)
+ *   useMock               {boolean}   — when true, skips the real WS and replays
+ *                                       synthetic events on a timer so the animations
+ *                                       can be verified without a running backend.
+ *                                       ⚠️  Remove / set to false before shipping.
  *
  * WebSocket message types handled (per shared-contract.md):
- *   subagent_update  → updates the service map
- *   hypothesis_ready → surfaced as a prop-up summary (future task)
- *   awaiting_approval, fix_applied, incident_resolved → ignored here for now
+ *   subagent_update     → updates the service map
+ *   hypothesis_ready    → forwarded via onHypothesis
+ *   awaiting_approval   → forwarded via onAwaitingApproval
+ *   fix_applied         → forwarded via onFixApplied
+ *   incident_resolved   → forwarded via onIncidentResolved
  */
 
 import { useCallback, useEffect, useReducer } from 'react'
@@ -69,7 +75,38 @@ const MOCK_VERDICTS = {
   'inventory-service': 'healthy — no recent deploys, logs clean',
 }
 
-function useMockSocket(dispatch) {
+const MOCK_HYPOTHESIS = {
+  rootCauseService: 'payment-service',
+  explanation:
+    'A deployment at 13:58 UTC set DOWNSTREAM_TIMEOUT_MS to 50 ms, far below the ' +
+    'p99 upstream response time of ~340 ms. This caused the payment-service to ' +
+    'time out on nearly every checkout request, propagating latency up through ' +
+    'order-service to the API gateway.',
+  confidence: 0.91,
+  evidenceRefs: [
+    '2024-01-15T13:58:02Z payment-service deploy: commit a3f9c12 — "reduce timeout for faster failures" (author: dev-bot)',
+    'payment-service logs 13:58–14:02 UTC — 2,847 lines: DOWNSTREAM_TIMEOUT hit, avg latency 342 ms vs threshold 50 ms',
+    'order-service logs 13:58–14:02 UTC — upstream payment calls returning 504 at rate 94%',
+    'Runbook: payment-service — DOWNSTREAM_TIMEOUT_MS controls the hard cut-off for downstream HTTP calls; recommended minimum is 2000 ms for production traffic',
+    'inventory-service: no recent deploys, error rate 0.02% (baseline), marked healthy',
+    'api-gateway: request count normal, all elevated latency traces route through /checkout → order-service → payment-service',
+  ],
+}
+
+const MOCK_PROPOSED_FIX = {
+  service: 'payment-service',
+  action: 'config_change',
+  description: 'Restore DOWNSTREAM_TIMEOUT_MS to the recommended production value of 5000 ms.',
+  diff: `--- a/payment-service/.env
++++ b/payment-service/.env
+@@ -1,3 +1,3 @@
+ NODE_ENV=production
+-DOWNSTREAM_TIMEOUT_MS=50
++DOWNSTREAM_TIMEOUT_MS=5000
+ PORT=3002`,
+}
+
+function useMockSocket(dispatch, onHypothesis, onAwaitingApproval, onFixApplied, onIncidentResolved) {
   useEffect(() => {
     // Seed initial state immediately
     dispatch({
@@ -102,8 +139,17 @@ function useMockSocket(dispatch) {
       )
     })
 
+    // hypothesis_ready at ~7 s
+    timers.push(setTimeout(() => onHypothesis(MOCK_HYPOTHESIS), 7000))
+    // awaiting_approval at ~8 s (Bob has finished reasoning, proposed a fix)
+    timers.push(setTimeout(() => onAwaitingApproval(MOCK_PROPOSED_FIX), 8000))
+    // fix_applied + incident_resolved fire only after the user approves —
+    // IncidentDetail drives those from the API response, not the mock timer.
+    // We expose them here for completeness; they're triggered in IncidentDetail
+    // after the approveIncident() call resolves.
+
     return () => timers.forEach(clearTimeout)
-  }, [dispatch])
+  }, [dispatch, onHypothesis, onAwaitingApproval, onFixApplied, onIncidentResolved])
 }
 
 // ---------------------------------------------------------------------------
@@ -155,7 +201,15 @@ function ServiceCard({ name, status, verdict }) {
 // TriageBoard
 // ---------------------------------------------------------------------------
 
-export default function TriageBoard({ incidentId, initialServices = [], useMock = false }) {
+export default function TriageBoard({
+  incidentId,
+  initialServices = [],
+  onHypothesis = () => {},
+  onAwaitingApproval = () => {},
+  onFixApplied = () => {},
+  onIncidentResolved = () => {},
+  useMock = false,
+}) {
   const [services, dispatch] = useReducer(servicesReducer, {})
 
   // Seed from REST snapshot once we have it
@@ -174,21 +228,33 @@ export default function TriageBoard({ incidentId, initialServices = [], useMock 
         status: msg.status,
         verdict: msg.verdict ?? null,
       })
+    } else if (msg.type === 'hypothesis_ready' && msg.hypothesis) {
+      onHypothesis(msg.hypothesis)
+    } else if (msg.type === 'awaiting_approval') {
+      // The backend broadcasts awaiting_approval; proposedFix comes from the
+      // REST snapshot. We call onAwaitingApproval with no argument here;
+      // IncidentDetail will re-fetch or use the REST-seeded proposedFix.
+      onAwaitingApproval(null)
+    } else if (msg.type === 'fix_applied') {
+      onFixApplied(msg.result ?? null)
+    } else if (msg.type === 'incident_resolved') {
+      onIncidentResolved(msg.timeToResolutionMs ?? null)
     }
-    // hypothesis_ready / awaiting_approval / fix_applied / incident_resolved
-    // will be handled in Tasks 4–5; ignore here to avoid noise.
-  }, [])
+  }, [onHypothesis, onAwaitingApproval, onFixApplied, onIncidentResolved])
 
   // Real WebSocket — always called (hooks must not be conditional).
-  // When useMock=true the hook connects but we ignore its state; in practice
-  // the connection will fail silently against a non-running backend, which is
-  // fine because we're only checking the mock UI here.
   const wsStateReal = useTriageSocket(useMock ? null : incidentId, handleMessage)
   const wsState = useMock ? 'open' : wsStateReal
 
-  // Dev mock — always called; noop dispatch passed when not in mock mode
+  // Dev mock — always called; noop args passed when not in mock mode
   const noop = useCallback(() => {}, [])
-  useMockSocket(useMock ? dispatch : noop)
+  useMockSocket(
+    useMock ? dispatch : noop,
+    useMock ? onHypothesis : noop,
+    useMock ? onAwaitingApproval : noop,
+    useMock ? onFixApplied : noop,
+    useMock ? onIncidentResolved : noop,
+  )
 
   const banner = WS_BANNER[wsState] ?? WS_BANNER.closed
   const entries = Object.entries(services)

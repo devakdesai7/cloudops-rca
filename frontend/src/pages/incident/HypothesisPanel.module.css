@@ -1,0 +1,214 @@
+/* ── Panel container ─────────────────────────────────────────────────────── */
+
+.panel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: 1.4rem 1.5rem;
+  margin-top: 1.25rem;
+  animation: panelIn 0.4s ease;
+  border-left: 3px solid var(--accent);
+}
+
+@keyframes panelIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Section heading ─────────────────────────────────────────────────────── */
+
+.panelHeading {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--accent);
+  margin: 0 0 1rem;
+}
+
+/* ── Root cause row ──────────────────────────────────────────────────────── */
+
+.rootCauseRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.7rem;
+  margin-bottom: 0.85rem;
+}
+
+.rootCauseLabel {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.rootCauseService {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #f0b429;
+  background: rgba(240, 180, 41, 0.1);
+  border: 1px solid rgba(240, 180, 41, 0.3);
+  border-radius: var(--radius-sm);
+  padding: 0.1rem 0.55rem;
+  font-family: var(--font-mono);
+}
+
+/* ── Explanation ─────────────────────────────────────────────────────────── */
+
+.explanation {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  line-height: 1.65;
+  margin: 0 0 1.1rem;
+}
+
+/* ── Confidence bar ──────────────────────────────────────────────────────── */
+
+.confidenceRow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.confidenceLabel {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  min-width: 4.5rem;
+}
+
+.confidenceTrack {
+  flex: 1;
+  height: 6px;
+  background: var(--bg-raised);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.confidenceFill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.confidenceFill[data-level="low"]    { background: #f85149; }
+.confidenceFill[data-level="medium"] { background: #f0b429; }
+.confidenceFill[data-level="high"]   { background: linear-gradient(90deg, var(--accent) 0%, #34d399 100%); }
+
+.confidencePct {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  min-width: 2.5rem;
+  text-align: right;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+}
+
+/* ── Evidence section heading ────────────────────────────────────────────── */
+
+.evidenceHeading {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  margin: 0 0 0.55rem;
+}
+
+/* ── Evidence list ───────────────────────────────────────────────────────── */
+
+.evidenceList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+/* ── Individual evidence item ────────────────────────────────────────────── */
+
+.evidenceItem {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+/* The <summary> toggle row */
+.evidenceSummary {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.83rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  background: var(--bg-raised);
+  list-style: none;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.evidenceSummary::-webkit-details-marker { display: none; }
+
+.evidenceSummary:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+/* Chevron */
+.evidenceChevron {
+  flex-shrink: 0;
+  margin-top: 2px;
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+  display: inline-block;
+}
+
+details[open] .evidenceChevron { transform: rotate(180deg); }
+
+.evidenceSummaryText {
+  flex: 1;
+  line-height: 1.45;
+}
+
+/* The expanded body */
+.evidenceBody {
+  padding: 0.65rem 0.85rem;
+  background: #0d1117;
+  border-top: 1px solid var(--border-default);
+  animation: fadeIn 0.18s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.evidenceBodyText {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: #e6edf3;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+}
+
+.evidenceBodyText .logLine {
+  display: block;
+  padding: 0.04rem 0;
+}
+
+.evidenceBodyText .logLine:hover {
+  background: rgba(255, 255, 255, 0.04);
+}

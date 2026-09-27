@@ -1,0 +1,167 @@
+/* ── Panel container ─────────────────────────────────────────────────────── */
+
+.gate {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-left: 3px solid #f0b429;
+  border-radius: var(--radius-lg);
+  padding: 1.4rem 1.5rem;
+  margin-top: 1.25rem;
+  animation: gateIn 0.4s ease;
+}
+
+@keyframes gateIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.gate.decided {
+  border-left-color: var(--border-default);
+  opacity: 0.65;
+}
+
+/* ── Section heading ─────────────────────────────────────────────────────── */
+
+.heading {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: #f0b429;
+  margin: 0 0 1rem;
+}
+
+/* ── Proposed fix metadata ───────────────────────────────────────────────── */
+
+.metaGrid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 0.85rem;
+  margin-bottom: 0.9rem;
+  font-size: 0.85rem;
+}
+
+.metaKey {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.metaVal {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+.description {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0 0 1rem;
+}
+
+/* ── Diff block ──────────────────────────────────────────────────────────── */
+
+.diffHeading {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  margin: 0 0 0.4rem;
+}
+
+.diffBlock {
+  background: #0d1117;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  margin-bottom: 1.25rem;
+  overflow-x: auto;
+}
+
+.diffPre {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.6;
+  color: #e6edf3;
+  margin: 0;
+  white-space: pre;
+}
+
+/* Diff line colouring */
+.diffLineAdded   { color: #34d399; display: block; }
+.diffLineRemoved { color: #f85149; display: block; }
+.diffLineHunk    { color: var(--accent); display: block; }
+.diffLineCtx     { color: var(--text-muted); display: block; }
+
+/* ── Viewer read-only note ───────────────────────────────────────────────── */
+
+.viewerNote {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  background: var(--bg-raised);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.75rem;
+  margin-top: 0.5rem;
+}
+
+/* ── Action row ──────────────────────────────────────────────────────────── */
+
+.actionRow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.btnApprove {
+  background: rgba(52, 211, 153, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(52, 211, 153, 0.4);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 1.3rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+  letter-spacing: 0.01em;
+}
+
+.btnApprove:hover:not(:disabled) {
+  background: rgba(52, 211, 153, 0.22);
+  border-color: rgba(52, 211, 153, 0.65);
+  box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.12);
+}
+
+.btnApprove:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btnReject {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 1.3rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+  letter-spacing: 0.01em;
+}
+
+.btnReject:hover:not(:disabled) {
+  border-color: #f85149;
+  color: #f85149;
+}
+
+.btnReject:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.actionError {
+  font-size: 0.82rem;
+  color: #f85149;
+  margin: 0;
+}
