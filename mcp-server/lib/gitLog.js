@@ -132,3 +132,32 @@ export function checkDeployHistory({ service, repoPath = INFRA_REPO }) {
     description: message,
   }));
 }
+
+/**
+ * Returns the exact diff for a given commit, scoped to the specified service.
+ *
+ * @param {object} params
+ * @param {string} params.service - service name, e.g. "payment-service"
+ * @param {string} params.commitSha - the SHA of the commit to inspect
+ * @param {string} [params.repoPath] - override repo path
+ * @returns {string} The full commit patch text
+ */
+export function getCommitDiff({ service, commitSha, repoPath = INFRA_REPO }) {
+  const servicePath = `services/${service}/`;
+  const args = [
+    "-C", repoPath,
+    "show",
+    "--format=fuller",
+    "--patch",
+    commitSha,
+    "--",
+    servicePath
+  ];
+
+  try {
+    const raw = execFileSync("git", args, { encoding: "utf8" });
+    return raw;
+  } catch (err) {
+    throw new Error(`Failed to get diff for ${commitSha}: ${err.message}`);
+  }
+}

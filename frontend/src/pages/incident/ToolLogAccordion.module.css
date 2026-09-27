@@ -1,0 +1,101 @@
+.container {
+  margin-top: 1rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.headerBtn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.8rem 1.25rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.headerBtn:hover {
+  background: var(--bg-highlight);
+}
+
+.icon {
+  font-size: 1rem;
+}
+
+.title {
+  flex: 1;
+  text-align: left;
+}
+
+.chevron {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.content {
+  padding: 1.25rem;
+  border-top: 1px solid var(--border-default);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  border-left: 2px solid var(--border-hover);
+  margin-left: 0.5rem;
+  padding-left: 1.25rem;
+}
+
+.timelineItem {
+  position: relative;
+}
+
+.bullet {
+  position: absolute;
+  left: -1.6rem;
+  top: 0.2rem;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #3b82f6;
+  border: 2px solid var(--bg-surface);
+}
+
+.itemHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.4rem;
+}
+
+.toolName {
+  font-size: 0.85rem;
+  color: #60a5fa;
+  font-weight: 600;
+}
+
+.timestamp {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.toolArgs {
+  margin: 0;
+  padding: 0.75rem;
+  background: var(--bg-default);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  overflow-x: auto;
+}

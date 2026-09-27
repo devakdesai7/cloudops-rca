@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthContext'
 import ApprovalGate from './incident/ApprovalGate'
 import HypothesisPanel from './incident/HypothesisPanel'
 import ResolutionResult from './incident/ResolutionResult'
+import ToolLogAccordion from './incident/ToolLogAccordion'
 import TriageBoard from './incident/TriageBoard'
 import styles from './Home.module.css'
 
@@ -24,6 +25,7 @@ export default function IncidentDetail() {
   const [proposedFix, setProposedFix] = useState(null)
   const [showApproval, setShowApproval] = useState(false)
   const [resolution, setResolution] = useState(null)
+  const [toolCalls, setToolCalls] = useState([])
 
   // ── REST snapshot ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -34,6 +36,7 @@ export default function IncidentDetail() {
           setIncident(data)
           if (data.hypothesis) setHypothesis(data.hypothesis)
           if (data.proposedFix) setProposedFix(data.proposedFix)
+          if (data.toolCalls) setToolCalls(data.toolCalls)
           if (data.status === 'awaiting_approval') setShowApproval(true)
           if (data.status === 'resolved') {
             setResolution({
@@ -81,6 +84,10 @@ export default function IncidentDetail() {
       timeToResolutionMs: ms,
       wasRejected: false,
     }))
+  }, [])
+
+  const handleToolCall = useCallback((tc) => {
+    setToolCalls((prev) => [...prev, tc])
   }, [])
 
   return (
@@ -137,8 +144,11 @@ export default function IncidentDetail() {
           onAwaitingApproval={handleAwaitingApproval}
           onFixApplied={handleFixApplied}
           onIncidentResolved={handleIncidentResolved}
+          onToolCall={handleToolCall}
           useMock={USE_MOCK}
         />
+
+        <ToolLogAccordion toolCalls={toolCalls} />
 
         {/* Hypothesis panel — animates in when available */}
         <HypothesisPanel hypothesis={hypothesis} />

@@ -14,7 +14,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { queryLogs } from "./lib/queryLogs.js";
-import { getRecentCommits, checkDeployHistory } from "./lib/gitLog.js";
+import { getRecentCommits, checkDeployHistory, getCommitDiff } from "./lib/gitLog.js";
 import { getRunbook } from "./lib/getRunbook.js";
 import { applyFix } from "./lib/applyFix.js";
 import { waitForApproval } from "./lib/waitForApproval.js";
@@ -123,6 +123,28 @@ server.registerTool(
     const history = checkDeployHistory({ service });
     return {
       content: [{ type: "text", text: JSON.stringify(history, null, 2) }],
+    };
+  }
+);
+
+// ---------------------------------------------------------------------------
+// get_commit_diff
+// Contract: get_commit_diff(service, commitSha)
+//   -> string (git patch content)
+// ---------------------------------------------------------------------------
+server.registerTool(
+  "get_commit_diff",
+  {
+    description: "Retrieve the exact code changes (git diff/patch) for a specific commit in a service.",
+    inputSchema: z.object({
+      service: z.string().describe("Name of the service"),
+      commitSha: z.string().describe("The full or short SHA of the commit to inspect"),
+    }),
+  },
+  async ({ service, commitSha }) => {
+    const diff = getCommitDiff({ service, commitSha });
+    return {
+      content: [{ type: "text", text: diff }],
     };
   }
 );

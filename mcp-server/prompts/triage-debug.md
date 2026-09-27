@@ -27,8 +27,8 @@ subagent. This must happen in parallel, not sequentially.
 
 Assign each subagent the following instructions and constraints:
 - You have access to ONLY the `query_logs`, `get_recent_commits`,
-  `get_runbook`, and `check_deploy_history` tools scoped to your assigned
-  service.
+  `get_runbook`, `check_deploy_history`, and `get_commit_diff` tools
+  scoped to your assigned service.
 - Call `get_runbook` for your service.
 - Call `query_logs` for your service over the last 15 minutes.
   When calling query_logs, compute the actual current UTC timestamp
@@ -37,6 +37,9 @@ Assign each subagent the following instructions and constraints:
   placeholder or example date — calculate the real current time before
   each call.
 - Call `check_deploy_history` for your service.
+- If you suspect a specific commit is responsible for the incident based on
+  the deploy history or commit messages, you MUST call `get_commit_diff`
+  to verify the exact code changes before making your hypothesis.
 - Print a BOB_EVENT line exactly matching this shape the moment you
   start:
   `BOB_EVENT:{"type":"subagent_update","service":"<name>","status":"investigating","verdict":null}`

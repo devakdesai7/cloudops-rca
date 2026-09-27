@@ -208,6 +208,7 @@ export default function TriageBoard({
   onAwaitingApproval = () => {},
   onFixApplied = () => {},
   onIncidentResolved = () => {},
+  onToolCall = () => {},
   useMock = false,
 }) {
   const [services, dispatch] = useReducer(servicesReducer, {})
@@ -239,8 +240,10 @@ export default function TriageBoard({
       onFixApplied(msg.result ?? null)
     } else if (msg.type === 'incident_resolved') {
       onIncidentResolved(msg.timeToResolutionMs ?? null)
+    } else if (msg.type === 'tool_call') {
+      onToolCall(msg)
     }
-  }, [onHypothesis, onAwaitingApproval, onFixApplied, onIncidentResolved])
+  }, [onHypothesis, onAwaitingApproval, onFixApplied, onIncidentResolved, onToolCall])
 
   // Real WebSocket — always called (hooks must not be conditional).
   const wsStateReal = useTriageSocket(useMock ? null : incidentId, handleMessage)
